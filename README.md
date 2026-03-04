@@ -26,6 +26,7 @@ Variables utilisées dans `.env`:
 - `MODEL_PATH`
 - `MODEL_URL`
 - `DB_PATH` (optionnel, défaut: `database.db`)
+- `TWO_FA_CODE` (optionnel, pour injecter automatiquement le code OTP sans saisie terminal)
 
 ## Lancement
 
@@ -34,6 +35,16 @@ python3 bot.py
 ```
 
 Le script demandera le code 2FA dans le terminal, puis tentera d'ouvrir et de compléter les sondages détectés.
+
+## Plan de travail recommandé (Coinpayu / pages similaires)
+
+1. **Connexion** : le bot essaie plusieurs sélecteurs (`email`, `username`, `input[type='email']`, etc.) pour éviter les échecs si le formulaire change.
+2. **2FA** : il lit d'abord `TWO_FA_CODE` / `OTP_CODE`, sinon il demande la saisie dans le terminal.
+3. **Détection des sondages** : il recherche des liens/boutons contenant `survey`, `sondage`, `offerwall`, `lootably`, `bitlabs`, `cpx`.
+4. **Réponse automatique** : il traite radio/checkbox/select/champs texte et tente de cliquer sur `suivant/continuer/submit/terminer`.
+5. **Mémoire locale** : chaque question-réponse est stockée dans SQLite pour réutiliser des réponses cohérentes sur les prochaines sessions.
+
+> Important: vérifiez les règles d'utilisation de la plateforme cible avant d'automatiser des actions.
 
 ## Mémoire locale des réponses
 

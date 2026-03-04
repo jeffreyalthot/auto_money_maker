@@ -136,6 +136,18 @@ def wait_and_fill(driver: webdriver.Firefox, by: By, selector: str, value: str, 
     field.send_keys(value)
 
 
+def wait_and_fill_first(driver: webdriver.Firefox, selectors: Sequence[tuple[By, str]], value: str, timeout: int = 20) -> tuple[By, str]:
+    last_error: Exception | None = None
+    for by, selector in selectors:
+        try:
+            wait_and_fill(driver, by, selector, value, timeout=timeout)
+            return by, selector
+        except TimeoutException as exc:
+            last_error = exc
+            continue
+    raise TimeoutException(f"Champ introuvable pour les sélecteurs: {selectors}") from last_error
+
+
 def click_if_exists(driver: webdriver.Firefox, by: By, selector: str) -> bool:
     try:
         elem = driver.find_element(by, selector)
@@ -145,19 +157,59 @@ def click_if_exists(driver: webdriver.Firefox, by: By, selector: str) -> bool:
         return False
 
 
+def click_first_clickable(driver: webdriver.Firefox, selectors: Sequence[tuple[By, str]], timeout: int = 10) -> tuple[By, str] | None:
+    for by, selector in selectors:
+        try:
+            button = WebDriverWait(driver, timeout).until(EC.element_to_be_clickable((by, selector)))
+            button.click()
+            return by, selector
+        except TimeoutException:
+            continue
+    return None
+
+
 def login_with_2fa(driver: webdriver.Firefox, login_url: str, email: str, password: str) -> None:
     driver.get(login_url)
 
-    wait_and_fill(driver, By.NAME, "email", email)
-    wait_and_fill(driver, By.NAME, "password", password)
+    email_selectors = [
+        (By.NAME, "email"),
+        (By.NAME, "username"),
+        (By.CSS_SELECTOR, "input[type='email']"),
+        (By.CSS_SELECTOR, "input[name*='user']"),
+        (By.CSS_SELECTOR, "input[name*='login']"),
+        (By.ID, "email"),
+        (By.ID, "username"),
+    ]
+    password_selectors = [
+        (By.NAME, "password"),
+        (By.CSS_SELECTOR, "input[type='password']"),
+        (By.ID, "password"),
+    ]
+    submit_selectors = [
+        (By.CSS_SELECTOR, "button[type='submit']"),
+        (By.CSS_SELECTOR, "input[type='submit']"),
+        (By.XPATH, "//button[contains(translate(., 'LOGINCONNEXIONSIGN INSE CONNECTER', 'loginconnexionsign inse connecter'), 'login') or contains(translate(., 'LOGINCONNEXIONSIGN INSE CONNECTER', 'loginconnexionsign inse connecter'), 'connexion') or contains(translate(., 'LOGINCONNEXIONSIGN INSE CONNECTER', 'loginconnexionsign inse connecter'), 'sign in') or contains(translate(., 'LOGINCONNEXIONSIGN INSE CONNECTER', 'loginconnexionsign inse connecter'), 'se connecter')]")
+    ]
 
-    if not click_if_exists(driver, By.CSS_SELECTOR, "button[type='submit']"):
+    wait_and_fill_first(driver, email_selectors, email)
+    wait_and_fill_first(driver, password_selectors, password)
+
+    if not click_first_clickable(driver, submit_selectors):
         raise RuntimeError("Impossible de trouver le bouton de connexion.")
 
-    code = input("Entrez le code 2FA: ").strip()
+    code = (os.getenv("TWO_FA_CODE") or os.getenv("OTP_CODE") or "").strip() or input("Entrez le code 2FA: ").strip()
     if code:
         filled = False
-        for selector in ["input[name='2fa']", "input[name='otp']", "input[type='tel']", "input[type='number']"]:
+        for selector in [
+            "input[name='2fa']",
+            "input[name='otp']",
+            "input[name='code']",
+            "input[name*='token']",
+            "input[id*='otp']",
+            "input[type='tel']",
+            "input[type='number']",
+            "input[inputmode='numeric']",
+        ]:
             try:
                 wait_and_fill(driver, By.CSS_SELECTOR, selector, code, timeout=10)
                 filled = True
@@ -168,7 +220,25 @@ def login_with_2fa(driver: webdriver.Firefox, login_url: str, email: str, passwo
         if not filled:
             print("[2FA] champ non détecté automatiquement, saisie manuelle nécessaire.")
         else:
-            click_if_exists(driver, By.CSS_SELECTOR, "button[type='submit']")
+            click_first_clickable(driver, submit_selectors, timeout=8)
+
+
+def get_survey_candidates(driver: webdriver.Firefox) -> list:
+    selectors = [
+        "a[href*='survey']",
+        "a[href*='sondage']",
+        "a[href*='offerwall']",
+        "a[href*='lootably']",
+        "a[href*='bitlabs']",
+        "a[href*='cpx']",
+        "button[data-action*='survey']",
+        "button[class*='survey']",
+        "[data-testid*='survey']",
+    ]
+    found = []
+    for selector in selectors:
+        found.extend(driver.find_elements(By.CSS_SELECTOR, selector))
+    return found
 
 
 def _safe_text(elem) -> str:
@@ -357,7 +427,7 @@ def run_surveys(driver: webdriver.Firefox, survey_url: str, memory: SurveyMemory
     driver.get(survey_url)
 
     while True:
-        survey_links = driver.find_elements(By.CSS_SELECTOR, "a[href*='survey'], button[data-action*='survey']")
+        survey_links = get_survey_candidates(driver)
         target = _first_clickable(survey_links)
         if target:
             target.click()
