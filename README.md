@@ -7,6 +7,11 @@ Ce projet fournit un assistant **local** pour Firefox qui peut:
 - ouvrir les pages de sondage, lire les champs du formulaire et proposer des réponses;
 - mémoriser les questions/réponses dans `database.db` pour réutiliser des réponses cohérentes sur des questions similaires.
 
+## Limites d'usage
+
+Ce dépôt est destiné à des usages **autorisés** (QA interne, formulaires de test, environnements de démonstration).
+L'automatisation de plateformes de gains/sondages tiers (ex: domaines de type Coinpayu/offerwall) est bloquée par défaut dans le code.
+
 ## Installation
 
 ```bash
