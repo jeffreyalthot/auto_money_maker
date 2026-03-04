@@ -32,6 +32,7 @@ Variables utilisées dans `.env`:
 - `MODEL_URL`
 - `DB_PATH` (optionnel, défaut: `database.db`)
 - `TWO_FA_CODE` (optionnel, pour injecter automatiquement le code OTP sans saisie terminal)
+- `MAX_SURVEYS` (optionnel, défaut: `20`)
 
 ## Lancement
 
@@ -39,7 +40,9 @@ Variables utilisées dans `.env`:
 python3 bot.py
 ```
 
-Le script demandera le code 2FA dans le terminal, puis tentera d'ouvrir et de compléter les sondages détectés.
+Le script demandera le code 2FA dans le terminal. Si la connexion automatique/2FA échoue, vous pouvez terminer manuellement dans Firefox puis confirmer en tapant `Y` dans le terminal.
+
+Ensuite, il tentera d'ouvrir et de compléter les formulaires détectés (limite par défaut: 20 formulaires).
 
 ## Plan de travail recommandé (Coinpayu / pages similaires)
 
