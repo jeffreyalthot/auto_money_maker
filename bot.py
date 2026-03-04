@@ -262,11 +262,18 @@ def login_with_2fa(driver: webdriver.Firefox, login_url: str, email: str, passwo
         (By.CSS_SELECTOR, "input[type='password']"),
         (By.ID, "password"),
     ]
-    wait_and_fill_first(driver, email_selectors, email)
-    wait_and_fill_first(driver, password_selectors, password)
+    try:
+        wait_and_fill_first(driver, email_selectors, email)
+        wait_and_fill_first(driver, password_selectors, password)
 
-    if not click_login_button_only(driver):
-        raise RuntimeError("Impossible de trouver le bouton de connexion.")
+        if not click_login_button_only(driver):
+            raise RuntimeError("Impossible de trouver le bouton de connexion.")
+    except TimeoutException:
+        print("[login] Connexion automatique indisponible. Passez en connexion manuelle.")
+        wait_for_manual_step(
+            "Connectez-vous manuellement, validez le 2FA si nécessaire puis tapez Y pour continuer: "
+        )
+        return
 
     two_fa_selectors = [
         "input[name='2fa']",
@@ -297,11 +304,21 @@ def login_with_2fa(driver: webdriver.Firefox, login_url: str, email: str, passwo
     code = (os.getenv("TWO_FA_CODE") or os.getenv("OTP_CODE") or "").strip() or input("Entrez le code 2FA/OTP: ").strip()
     if not code:
         print("[2FA] Aucun code fourni, saisie manuelle nécessaire.")
+        wait_for_manual_step("Validez le 2FA manuellement puis tapez Y pour continuer: ")
         return
 
     two_fa_field.clear()
     two_fa_field.send_keys(code)
-    click_login_button_only(driver, timeout=8)
+    if not click_login_button_only(driver, timeout=8):
+        wait_for_manual_step("Finalisez la connexion manuellement puis tapez Y pour continuer: ")
+
+
+def wait_for_manual_step(prompt: str) -> None:
+    while True:
+        value = input(prompt).strip().lower()
+        if value == "y":
+            return
+        print("Réponse attendue: Y")
 
 
 def get_survey_candidates(driver: webdriver.Firefox) -> list:
@@ -503,11 +520,15 @@ def answer_current_survey(driver: webdriver.Firefox, memory: SurveyMemory) -> bo
     return answered
 
 
-def run_surveys(driver: webdriver.Firefox, survey_url: str, memory: SurveyMemory) -> None:
+def run_surveys(driver: webdriver.Firefox, survey_url: str, memory: SurveyMemory, max_surveys: int = 20) -> None:
     counters = Counters()
     driver.get(survey_url)
 
     while True:
+        if counters.completed >= max_surveys:
+            print(f"[survey] limite atteinte ({max_surveys}). Arrêt de la boucle.")
+            break
+
         survey_links = get_survey_candidates(driver)
         target = _first_clickable(survey_links)
         if target:
@@ -554,6 +575,7 @@ def main() -> None:
     model_url = os.getenv("MODEL_URL", "")
     model_path = Path(os.getenv("MODEL_PATH", "models/model.gguf"))
     db_path = Path(os.getenv("DB_PATH", "database.db"))
+    max_surveys = int(os.getenv("MAX_SURVEYS", "20"))
 
     if not all([email, password, login_url, survey_url]):
         raise RuntimeError("Variables .env manquantes.")
@@ -570,7 +592,7 @@ def main() -> None:
     try:
         login_with_2fa(driver, login_url, email, password)
         time.sleep(2)
-        run_surveys(driver, survey_url, memory)
+        run_surveys(driver, survey_url, memory, max_surveys=max_surveys)
     finally:
         memory.close()
         driver.quit()
