@@ -1,18 +1,11 @@
-# Local Firefox Survey Assistant (Safe Mode)
+# Local Firefox Survey Assistant
 
 Ce projet fournit un assistant **local** pour Firefox qui peut:
 
 - se connecter à un site via email/mot de passe depuis `.env`;
 - demander le code 2FA dans le terminal puis l'injecter automatiquement;
-- ouvrir les pages de sondage une par une;
-- journaliser un compteur `share` / `bad` (selon validation manuelle).
-
-## Important
-
-Le script est volontairement en **mode sûr**:
-
-- il **n'automatise pas** les réponses aux sondages;
-- il nécessite une validation humaine pour rester conforme aux conditions d'utilisation des plateformes.
+- ouvrir les pages de sondage, lire les champs du formulaire et proposer des réponses;
+- mémoriser les questions/réponses dans `database.db` pour réutiliser des réponses cohérentes sur des questions similaires.
 
 ## Installation
 
@@ -24,9 +17,7 @@ pip install -r requirements.txt
 
 ## Configuration
 
-Un fichier `.env` est fourni avec les variables demandées.
-
-Variables utilisées:
+Variables utilisées dans `.env`:
 
 - `EMAIL`
 - `PASSWORD`
@@ -34,6 +25,7 @@ Variables utilisées:
 - `SURVEY_URL`
 - `MODEL_PATH`
 - `MODEL_URL`
+- `DB_PATH` (optionnel, défaut: `database.db`)
 
 ## Lancement
 
@@ -41,9 +33,15 @@ Variables utilisées:
 python3 bot.py
 ```
 
-Le script demandera le code 2FA dans le terminal.
+Le script demandera le code 2FA dans le terminal, puis tentera d'ouvrir et de compléter les sondages détectés.
 
-## Modèle IA local léger
+## Mémoire locale des réponses
 
-Au démarrage, le script télécharge automatiquement un petit modèle local si absent (`MODEL_URL` -> `MODEL_PATH`).
-Ce modèle n'est pas utilisé pour contourner des protections, uniquement pour de futures extensions locales.
+Les réponses sont enregistrées dans SQLite (`database.db`) avec:
+
+- le texte de la question (original + normalisé),
+- la réponse envoyée,
+- le type de champ (texte, radio, checkbox, select),
+- un timestamp.
+
+Lorsqu'une question similaire est retrouvée, le bot réutilise la réponse précédente pour garder une cohérence entre sondages.
