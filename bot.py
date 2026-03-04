@@ -168,6 +168,74 @@ def click_first_clickable(driver: webdriver.Firefox, selectors: Sequence[tuple[B
     return None
 
 
+def click_login_button_only(driver: webdriver.Firefox, timeout: int = 10) -> bool:
+    """Clique uniquement sur le bouton de connexion classique (pas OAuth/social)."""
+    oauth_keywords = (
+        "google",
+        "facebook",
+        "apple",
+        "github",
+        "microsoft",
+        "linkedin",
+        "twitter",
+        "x.com",
+        "oauth",
+        "sso",
+    )
+    login_keywords = (
+        "sign in",
+        "login",
+        "log in",
+        "connexion",
+        "se connecter",
+    )
+
+    button_selectors = [
+        (By.CSS_SELECTOR, "button[type='submit']"),
+        (By.CSS_SELECTOR, "input[type='submit']"),
+        (By.XPATH, "//button[contains(translate(normalize-space(.), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'sign in') or contains(translate(normalize-space(.), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'login') or contains(translate(normalize-space(.), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'log in') or contains(translate(normalize-space(.), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'connexion') or contains(translate(normalize-space(.), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'se connecter')]"),
+    ]
+
+    candidates = []
+    for by, selector in button_selectors:
+        try:
+            candidates.extend(WebDriverWait(driver, timeout).until(EC.presence_of_all_elements_located((by, selector))))
+        except TimeoutException:
+            continue
+
+    for button in candidates:
+        try:
+            if not (button.is_displayed() and button.is_enabled()):
+                continue
+            label = normalize_text(
+                " ".join(
+                    filter(
+                        None,
+                        [
+                            button.text,
+                            button.get_attribute("value"),
+                            button.get_attribute("aria-label"),
+                            button.get_attribute("name"),
+                            button.get_attribute("id"),
+                            button.get_attribute("class"),
+                        ],
+                    )
+                )
+            )
+            if not label:
+                continue
+            if any(k in label for k in oauth_keywords):
+                continue
+            if not any(k in label for k in login_keywords):
+                continue
+
+            button.click()
+            return True
+        except (StaleElementReferenceException, ElementClickInterceptedException):
+            continue
+    return False
+
+
 def login_with_2fa(driver: webdriver.Firefox, login_url: str, email: str, password: str) -> None:
     driver.get(login_url)
 
@@ -185,42 +253,46 @@ def login_with_2fa(driver: webdriver.Firefox, login_url: str, email: str, passwo
         (By.CSS_SELECTOR, "input[type='password']"),
         (By.ID, "password"),
     ]
-    submit_selectors = [
-        (By.CSS_SELECTOR, "button[type='submit']"),
-        (By.CSS_SELECTOR, "input[type='submit']"),
-        (By.XPATH, "//button[contains(translate(., 'LOGINCONNEXIONSIGN INSE CONNECTER', 'loginconnexionsign inse connecter'), 'login') or contains(translate(., 'LOGINCONNEXIONSIGN INSE CONNECTER', 'loginconnexionsign inse connecter'), 'connexion') or contains(translate(., 'LOGINCONNEXIONSIGN INSE CONNECTER', 'loginconnexionsign inse connecter'), 'sign in') or contains(translate(., 'LOGINCONNEXIONSIGN INSE CONNECTER', 'loginconnexionsign inse connecter'), 'se connecter')]")
-    ]
-
     wait_and_fill_first(driver, email_selectors, email)
     wait_and_fill_first(driver, password_selectors, password)
 
-    if not click_first_clickable(driver, submit_selectors):
+    if not click_login_button_only(driver):
         raise RuntimeError("Impossible de trouver le bouton de connexion.")
 
-    code = (os.getenv("TWO_FA_CODE") or os.getenv("OTP_CODE") or "").strip() or input("Entrez le code 2FA: ").strip()
-    if code:
-        filled = False
-        for selector in [
-            "input[name='2fa']",
-            "input[name='otp']",
-            "input[name='code']",
-            "input[name*='token']",
-            "input[id*='otp']",
-            "input[type='tel']",
-            "input[type='number']",
-            "input[inputmode='numeric']",
-        ]:
-            try:
-                wait_and_fill(driver, By.CSS_SELECTOR, selector, code, timeout=10)
-                filled = True
-                break
-            except TimeoutException:
-                continue
+    two_fa_selectors = [
+        "input[name='2fa']",
+        "input[name='otp']",
+        "input[name='code']",
+        "input[name*='token']",
+        "input[id*='otp']",
+        "input[id*='2fa']",
+        "input[type='tel']",
+        "input[type='number']",
+        "input[inputmode='numeric']",
+    ]
 
-        if not filled:
-            print("[2FA] champ non détecté automatiquement, saisie manuelle nécessaire.")
-        else:
-            click_first_clickable(driver, submit_selectors, timeout=8)
+    two_fa_field = None
+    for selector in two_fa_selectors:
+        try:
+            candidate = WebDriverWait(driver, 5).until(EC.presence_of_element_located((By.CSS_SELECTOR, selector)))
+            if candidate.is_displayed() and candidate.is_enabled():
+                two_fa_field = candidate
+                break
+        except TimeoutException:
+            continue
+
+    if not two_fa_field:
+        print("[2FA] Aucun champ OTP/2FA détecté: étape ignorée.")
+        return
+
+    code = (os.getenv("TWO_FA_CODE") or os.getenv("OTP_CODE") or "").strip() or input("Entrez le code 2FA/OTP: ").strip()
+    if not code:
+        print("[2FA] Aucun code fourni, saisie manuelle nécessaire.")
+        return
+
+    two_fa_field.clear()
+    two_fa_field.send_keys(code)
+    click_login_button_only(driver, timeout=8)
 
 
 def get_survey_candidates(driver: webdriver.Firefox) -> list:
