@@ -26,6 +26,15 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import Select, WebDriverWait
 
 
+RESTRICTED_AUTOMATION_HOST_KEYWORDS = (
+    "coinpayu",
+    "offerwall",
+    "cpx",
+    "bitlabs",
+    "lootably",
+)
+
+
 @dataclass
 class Counters:
     completed: int = 0
@@ -520,6 +529,21 @@ def run_surveys(driver: webdriver.Firefox, survey_url: str, memory: SurveyMemory
         time.sleep(1)
 
 
+def enforce_safe_usage(login_url: str, survey_url: str) -> None:
+    """Bloque l'automatisation des plateformes rémunérées et similaires.
+
+    Le script reste utilisable pour des tests internes, formulaires propriétaires ou QA,
+    mais ne doit pas servir à contourner les règles de plateformes tierces.
+    """
+
+    combined = normalize_text(f"{login_url} {survey_url}")
+    if any(keyword in combined for keyword in RESTRICTED_AUTOMATION_HOST_KEYWORDS):
+        raise RuntimeError(
+            "Automatisation bloquée pour ce domaine cible. "
+            "Utilisez ce script uniquement pour des formulaires/tests autorisés."
+        )
+
+
 def main() -> None:
     load_dotenv()
 
@@ -533,6 +557,8 @@ def main() -> None:
 
     if not all([email, password, login_url, survey_url]):
         raise RuntimeError("Variables .env manquantes.")
+
+    enforce_safe_usage(login_url, survey_url)
 
     if model_url:
         download_model(model_url, model_path)
